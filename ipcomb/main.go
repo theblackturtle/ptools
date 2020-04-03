@@ -39,6 +39,7 @@ func main() {
 			continue
 		}
 		lineArgs := strings.SplitN(line, ":", 2)
+		if len(lineArgs) != 2{continue}
 		ipAddress := lineArgs[0]
 		port := lineArgs[1]
 		if _, ok := ipsMap[ipAddress]; ok {
@@ -55,6 +56,7 @@ func main() {
 			continue
 		}
 		lineArgs := strings.SplitN(line, ",", 2)
+		if len(lineArgs) != 2{continue}
 		domainIp := lineArgs[1]
 		ports := ipsMap[domainIp]
 		for _, p := range ports {
