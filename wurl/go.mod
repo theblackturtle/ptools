@@ -1,4 +1,4 @@
-module github.com/theblackturtle/pentesting-tools/wurl
+module github.com/theblackturtle/ptools/wurl
 
 go 1.14
 
