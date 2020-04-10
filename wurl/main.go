@@ -141,25 +141,24 @@ func request(u string) (Response, error) {
 	req.Header.Set("User-Agent", UserAgent)
 	req.Header.Set("Accept", Accept)
 	req.Header.Set("Accept-Language", AcceptLang)
-	req.SetRequestURI(u)
 
 	resp := fasthttp.AcquireResponse()
 	defer fasthttp.ReleaseResponse(resp)
 
-	redirectTimes := 0
-redirects:
+	redirectsCount := 0
 	for {
+		req.SetRequestURI(u)
 		err := client.DoTimeout(req, resp, timeout)
 		if err != nil {
 			if errors.Is(err, fasthttp.ErrBodyTooLarge) {
 				return Response{}, nil
 			} else {
-				return response, err
+				return response, errors.New(fmt.Sprintf("request error: %s", err))
 			}
 		}
 		if fasthttp.StatusCodeIsRedirect(resp.StatusCode()) && redirect {
-			redirectTimes++
-			if redirectTimes > MaxRedirectTimes {
+			redirectsCount++
+			if redirectsCount > MaxRedirectTimes {
 				return response, errors.New("too many redirects")
 			}
 
@@ -167,15 +166,15 @@ redirects:
 			if len(nextLocation) == 0 {
 				return response, errors.New("location header not found")
 			}
-			nextUrl := getRedirectURL(u, nextLocation)
-			req.SetRequestURI(nextUrl)
-			continue redirects
+			fmt.Println(string(nextLocation))
+			u = getRedirectURL(u, nextLocation)
+			continue
 		}
-		break redirects
+		break
 	}
 
 	contentType := string(resp.Header.Peek(fasthttp.HeaderContentType))
-	if strings.Contains(contentType, "html") && (resp.StatusCode() == 404 || resp.StatusCode() == 429) {
+	if strings.Contains(contentType, "/html") && (resp.StatusCode() == 404 || resp.StatusCode() == 429) {
 		return response, errors.New("404 found")
 	}
 
