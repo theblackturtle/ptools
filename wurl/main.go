@@ -166,7 +166,6 @@ func request(u string) (Response, error) {
 			if len(nextLocation) == 0 {
 				return response, errors.New("location header not found")
 			}
-			fmt.Println(string(nextLocation))
 			u = getRedirectURL(u, nextLocation)
 			continue
 		}
