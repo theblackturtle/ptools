@@ -12,7 +12,7 @@ import (
 	jsoniter "github.com/json-iterator/go"
 )
 
-type JsonResult struct {
+type Result struct {
 	Input            map[string]string `json:"input"`
 	Position         int               `json:"position"`
 	StatusCode       int64             `json:"status"`
@@ -25,9 +25,9 @@ type JsonResult struct {
 }
 
 type jsonFileOutput struct {
-	CommandLine string       `json:"commandline"`
-	Time        string       `json:"time"`
-	Results     []JsonResult `json:"results"`
+	CommandLine string   `json:"commandline"`
+	Time        string   `json:"time"`
+	Results     []Result `json:"results"`
 }
 
 func main() {
@@ -51,7 +51,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	resultsMap := make(map[string][]JsonResult)
+	resultsPerHost := make(map[string][]Result)
 	for _, result := range foundUrls.Results {
 		u, err := url.Parse(result.Url)
 		if err != nil {
@@ -59,47 +59,47 @@ func main() {
 		}
 		hostname := fmt.Sprintf("%s://%s", u.Scheme, u.Host)
 
-		if rList := resultsMap[hostname]; len(rList) == 0 {
-			resultsMap[hostname] = []JsonResult{result}
+		if rList := resultsPerHost[hostname]; len(rList) == 0 {
+			resultsPerHost[hostname] = []Result{result}
 		} else {
-			resultsMap[hostname] = append(resultsMap[hostname], result)
+			resultsPerHost[hostname] = append(resultsPerHost[hostname], result)
 		}
 	}
 
-	var results []JsonResult
-	for _, foundList := range resultsMap {
-		p := mostStatusCode(foundList)
+	var results []Result
+	for _, resultList := range resultsPerHost {
+		p := getSpams(resultList)
 		if len(p) == 0 {
 			continue
 		}
 		// len(blackList)) == 0 mean get all
-		var blackList []int64
+		var blackList []string
 		for statusCode, times := range p {
 			if times >= limit {
 				blackList = append(blackList, statusCode)
 			}
 		}
 
-		for _, found := range foundList {
-			if !inSlice(blackList, found.StatusCode) {
+		for _, found := range resultList {
+			if !isSpam(blackList, found) {
 				results = append(results, found)
 			}
 		}
 	}
 
 	sort.SliceStable(results, func(i, j int) bool {
-		si_url, err := url.Parse(results[i].Url)
+		siUrl, err := url.Parse(results[i].Url)
 		if err != nil {
 			return true
 		}
-		sj_url, err := url.Parse(results[j].Url)
+		sjUrl, err := url.Parse(results[j].Url)
 		if err != nil {
 			return true
 		}
 
-		si_lower := strings.ToLower(si_url.Hostname())
-		sj_lower := strings.ToLower(sj_url.Hostname())
-		if si_lower < sj_lower {
+		siLower := strings.ToLower(siUrl.Hostname())
+		sjLower := strings.ToLower(sjUrl.Hostname())
+		if siLower < sjLower {
 			return true
 		} else {
 			return false
@@ -120,21 +120,23 @@ func main() {
 	}
 }
 
-func mostStatusCode(slice []JsonResult) map[int64]int {
-	m := make(map[int64]int)
-	for _, r := range slice {
-		if _, ok := m[r.StatusCode]; !ok {
-			m[r.StatusCode] = 1
+func getSpams(results []Result) map[string]int {
+	m := make(map[string]int)
+	for _, r := range results {
+		f := fmt.Sprintf("%d,%d,%d,%d", r.StatusCode, r.ContentLength, r.ContentLines, r.ContentWords)
+		if _, ok := m[f]; !ok {
+			m[f] = 1
 		} else {
-			m[r.StatusCode]++
+			m[f]++
 		}
 	}
 	return m
 }
 
-func inSlice(slice []int64, s int64) bool {
-	for _, e := range slice {
-		if s == e {
+func isSpam(blacklist []string, r Result) bool {
+	f := fmt.Sprintf("%d,%d,%d,%d", r.StatusCode, r.ContentLength, r.ContentLines, r.ContentWords)
+	for _, e := range blacklist {
+		if f == e {
 			return true
 		}
 	}
