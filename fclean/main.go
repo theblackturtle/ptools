@@ -32,7 +32,7 @@ type jsonFileOutput struct {
 
 func main() {
 	var limit int
-	flag.IntVar(&limit, "l", 50, "Limit")
+	flag.IntVar(&limit, "l", 100, "Limit")
 	flag.Parse()
 	f, err := os.Open(flag.Arg(0))
 	if err != nil {
