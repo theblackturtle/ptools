@@ -78,8 +78,8 @@ func main() {
 			InsecureSkipVerify: true,
 			Renegotiation:      tls.RenegotiateOnceAsClient, // For "local error: tls: no renegotiation"
 		},
-		ReadBufferSize:      4096,
-		WriteBufferSize:     4096,
+		ReadBufferSize:      48*1024,
+		WriteBufferSize:     48*1024,
 		MaxConnsPerHost:     1024,
 		MaxResponseBodySize: MaxBodySize,
 	}
