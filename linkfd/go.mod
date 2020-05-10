@@ -2,4 +2,4 @@ module github.com/theblackturtle/ptools/linkfd
 
 go 1.14
 
-require github.com/ditashi/jsbeautifier-go v0.0.0-20141206144643-2520a8026a9c
+require golang.org/x/net v0.0.0-20200506145744-7e3656a0809f

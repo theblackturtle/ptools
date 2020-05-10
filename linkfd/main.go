@@ -1,66 +1,36 @@
 package main
 
 import (
+    "bytes"
     "fmt"
     "io/ioutil"
+    "net/http"
     "os"
     "regexp"
     "sort"
     "strings"
 
-    "github.com/ditashi/jsbeautifier-go/jsbeautifier"
+    "golang.org/x/net/html"
 )
 
 var re = regexp.MustCompile(`(?:"|')(((?:[a-zA-Z]{1,10}://|//)[^"'/]{1,}\.[a-zA-Z]{2,}[^"']{0,})|((?:/|\.\./|\./)[^"'><,;| *()(%%$^/\\\[\]][^"'><,;|()]{1,})|([a-zA-Z0-9_\-/]{1,}/[a-zA-Z0-9_\-/]{1,}\.(?:[a-zA-Z]{1,4}|action)(?:[\?|#][^"|']{0,}|))|([a-zA-Z0-9_\-/]{1,}/[a-zA-Z0-9_\-/]{3,}(?:[\?|#][^"|']{0,}|))|([a-zA-Z0-9_\-]{1,}\.(?:php|asp|aspx|jsp|json|action|html|js|txt|xml)(?:[\?|#][^"|']{0,}|)))(?:"|')`)
-
-var options = map[string]interface{}{
-    "indent_size":               4,
-    "indent_char":               " ",
-    "indent_with_tabs":          false,
-    "preserve_newlines":         true,
-    "max_preserve_newlines":     10,
-    "space_in_paren":            false,
-    "space_in_empty_paren":      false,
-    "e4x":                       false,
-    "jslint_happy":              false,
-    "space_after_anon_function": false,
-    "brace_style":               "collapse",
-    "keep_array_indentation":    false,
-    "keep_function_indentation": false,
-    "eval_code":                 false,
-    "unescape_strings":          true,
-    "wrap_line_length":          0,
-    "break_chained_methods":     false,
-    "end_with_newline":          false,
-}
 
 func main() {
     rawSource, err := ioutil.ReadAll(os.Stdin)
     if err != nil {
         panic(err)
     }
-    sRawSource := string(rawSource)
-
-    var beautifySource string
-    if len(sRawSource) > 1000000 {
-        beautifySource = strings.ReplaceAll(sRawSource, ";", ";\r\n")
-        beautifySource = strings.ReplaceAll(sRawSource, ",", ",\r\n")
-    } else {
-        beautifySource, err = jsbeautifier.Beautify(&sRawSource, options)
-        if err != nil {
-            fmt.Println("Failed to beautify")
-            os.Exit(1)
-        }
-    }
+    contentType := http.DetectContentType(rawSource)
     var links []string
-    match := re.FindAllStringSubmatch(beautifySource, -1)
-    for _, m := range match {
-        matchGroup1 := filterNewLines(m[1])
-        if matchGroup1 == "" {
-            continue
-        }
-        links = append(links, matchGroup1)
+    if strings.Contains(contentType, "html") {
+        links = parseHTML(rawSource)
+    } else if strings.Contains(contentType, "text") {
+        links = parseOthers(string(rawSource))
+    } else {
+        fmt.Println("Not support this content type yet")
+        os.Exit(0)
     }
+
     uniqueLinks := unique(links)
     sort.Strings(uniqueLinks)
     for _, e := range uniqueLinks {
@@ -69,18 +39,97 @@ func main() {
 
 }
 
+func parseHTML(source []byte) (links []string) {
+    links = make([]string, 0)
+    htmlToken := html.NewTokenizer(bytes.NewReader(source))
+    for {
+        // Next scans the next token and returns its type.
+        tokenType := htmlToken.Next()
+        // Token returns the next Token
+        token := htmlToken.Token()
+        switch tokenType {
+        case html.ErrorToken:
+            return
+        case html.StartTagToken:
+            switch token.Data {
+            case "a":
+                links = append(links, GetHref(token))
+            case "img":
+                links = append(links, GetSrc(token))
+            case "script":
+                links = append(links, GetSrc(token))
+            case "link":
+                links = append(links, GetHref(token))
+            }
+        case html.TextToken:
+            text := html.UnescapeString(token.String())
+            text = strings.ToLower(strings.ReplaceAll(text, "\\", `\`))
+            replacer := strings.NewReplacer(`\u003c`, `<`, `\u003e`, `>`, `\u0026`, `&`)
+            text = replacer.Replace(text)
+            reLinks := regexExtract(text)
+            links = append(links, reLinks...)
+        }
+    }
+}
+
+func parseOthers(source string) []string {
+    links := make([]string, 0)
+    source = strings.ToLower(strings.ReplaceAll(source, "\\", `\`))
+    replacer := strings.NewReplacer(`\u003c`, `<`, `\u003e`, `>`, `\u0026`, `&`)
+    source = replacer.Replace(source)
+    reLinks := regexExtract(source)
+    links = append(links, reLinks...)
+    return links
+}
+
+// GetHref returns href values when present
+func GetHref(t html.Token) (href string) {
+    for _, a := range t.Attr {
+        if a.Key == "href" && a.Val != "#" {
+            href = a.Val
+        }
+    }
+    return
+}
+
+// GetSrc returns src values when present
+func GetSrc(t html.Token) (src string) {
+    for _, a := range t.Attr {
+        if a.Key == "src" {
+            src = a.Val
+        }
+    }
+    return
+}
+
 func filterNewLines(s string) string {
     return regexp.MustCompile(`[\t\r\n]+`).ReplaceAllString(strings.TrimSpace(s), " ")
 }
+func regexExtract(source string) []string {
+    var links []string
+    match := re.FindAllStringSubmatch(source, -1)
+    for _, m := range match {
+        matchGroup1 := filterNewLines(m[1])
+        if matchGroup1 == "" {
+            continue
+        }
+        link := strings.Trim(matchGroup1, `\`)
+        link = html.UnescapeString(link)
+        links = append(links, link)
+    }
+    return links
+}
 
-func unique(s []string) []string {
+func unique(elements []string) []string {
     seen := map[string]bool{}
-    uniqSlice := []string{}
-    for _, e := range s {
+    var results []string
+
+    for _, e := range elements {
+        e = strings.TrimSpace(e)
         if _, ok := seen[e]; !ok {
             seen[e] = true
-            uniqSlice = append(uniqSlice, e)
+            results = append(results, e)
         }
     }
-    return uniqSlice
+    return results
 }
