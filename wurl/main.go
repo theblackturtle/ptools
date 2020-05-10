@@ -31,14 +31,15 @@ const (
 )
 
 var (
-    client       *fasthttp.Client
-    jsonOutput   bool
-    redirect     bool
-    threads      int
-    timeout      time.Duration
-    inputFile    string
-    saveResponse bool
-    outputFolder string
+    client        *fasthttp.Client
+    jsonOutput    bool
+    redirect      bool
+    threads       int
+    timeout       time.Duration
+    inputFile     string
+    saveResponse  bool
+    outputFolder  string
+    ignore404Html bool
 )
 
 type Response struct {
@@ -62,6 +63,7 @@ func main() {
     flag.IntVar(&timeoutInt, "k", 15, "Timeout (second)")
     flag.BoolVar(&saveResponse, "s", false, "Save response")
     flag.StringVar(&outputFolder, "o", "out", "Output folder")
+    flag.BoolVar(&ignore404Html, "x", false, "Ignore HTML response with 404 and 429 status code")
     flag.Parse()
 
     if inputFile == "" {
@@ -154,7 +156,7 @@ func request(u string) (Response, error) {
             if errors.Is(err, fasthttp.ErrBodyTooLarge) {
                 return Response{}, nil
             } else {
-                return response, errors.New(fmt.Sprintf("request error: %s", err))
+                return response, fmt.Errorf("request error: %s", err)
             }
         }
         if fasthttp.StatusCodeIsRedirect(resp.StatusCode()) && redirect {
@@ -174,25 +176,29 @@ func request(u string) (Response, error) {
     }
 
     contentType := string(resp.Header.Peek(fasthttp.HeaderContentType))
-    if strings.Contains(contentType, "/html") && (resp.StatusCode() == 404 || resp.StatusCode() == 429) {
-        return response, errors.New("404 found")
+    if ignore404Html {
+        if strings.Contains(contentType, "html") && (resp.StatusCode() == 404 || resp.StatusCode() == 429) {
+            return response, fmt.Errorf("%d found", resp.StatusCode())
+        }
     }
 
     contentEncoding := string(resp.Header.Peek(fasthttp.HeaderContentEncoding))
     var body []byte
     var err error
-    if contentEncoding == "gzip" {
+    switch contentEncoding {
+    case "gzip":
         body, err = resp.BodyGunzip()
         if err != nil {
             return response, err
         }
-    } else if contentEncoding == "deflate" {
+    case "deflate":
         body, err = resp.BodyInflate()
         if err != nil {
             return response, err
         }
-    } else {
+    default:
         body = resp.Body()
+
     }
 
     var history []string
