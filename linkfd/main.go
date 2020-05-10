@@ -107,9 +107,9 @@ func filterNewLines(s string) string {
 }
 func regexExtract(source string) []string {
     var links []string
-    match := re.FindAllStringSubmatch(source, -1)
-    for _, m := range match {
-        matchGroup1 := filterNewLines(m[1])
+    matches := re.FindAllStringSubmatch(source, -1)
+    for _, match := range matches {
+        matchGroup1 := filterNewLines(match[1])
         if matchGroup1 == "" {
             continue
         }
