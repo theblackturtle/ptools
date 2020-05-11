@@ -18,6 +18,7 @@ var chars = []string{
     `(`,
     `)`,
     `.`,
+    `-`,
 }
 
 func main() {
