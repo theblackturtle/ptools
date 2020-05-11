@@ -9,19 +9,7 @@ import (
 )
 
 var nameStripRE = regexp.MustCompile(`^u[0-9a-f]{4}|20|22|25|2b|2f|3d|3a|40`)
-var chars = []string{
-    `-.`,
-    `*.`,
-    `*-`,
-    `"`,
-    `'`,
-    `(`,
-    `)`,
-    `.`,
-    `-`,
-    `+`,
-    `,`,
-}
+var subdomainRE = regexp.MustCompile(`(([a-zA-Z0-9]{1}|[_a-zA-Z0-9]{1}[_a-zA-Z0-9-]{0,61}[a-zA-Z0-9]{1})[.]{1})+[a-zA-Z]{2,61}`)
 
 func main() {
     sc := bufio.NewScanner(os.Stdin)
@@ -30,18 +18,27 @@ func main() {
         if line == "" {
             continue
         }
-        name := strings.ToLower(line)
-        name = trimChars(name)
-        if i := nameStripRE.FindStringIndex(name); i != nil {
-            name = name[i[1]:]
+        name := subdomainRE.FindString(line)
+        name = strings.ToLower(name)
+        for {
+            name = strings.Trim(name, "-.")
+            if i := nameStripRE.FindStringIndex(name); i != nil {
+                name = name[i[1]:]
+            } else {
+                break
+            }
         }
+        name = removeAsteriskLabel(name)
         fmt.Println(name)
     }
 }
 
-func trimChars(name string) string {
-    for _, c := range chars {
-        name = strings.Trim(name, c)
+func removeAsteriskLabel(s string) string {
+    startIndex := strings.LastIndex(s, "*.")
+
+    if startIndex == -1 {
+        return s
     }
-    return name
+
+    return s[startIndex+2:]
 }
