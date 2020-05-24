@@ -14,6 +14,7 @@ import (
 )
 
 var re = regexp.MustCompile(`(?:"|')(((?:[a-zA-Z]{1,10}://|//)[^"'/]{1,}\.[a-zA-Z]{2,}[^"']{0,})|((?:/|\.\./|\./)[^"'><,;| *()(%%$^/\\\[\]][^"'><,;|()]{1,})|([a-zA-Z0-9_\-/]{1,}/[a-zA-Z0-9_\-/]{1,}\.(?:[a-zA-Z]{1,4}|action)(?:[\?|#][^"|']{0,}|))|([a-zA-Z0-9_\-/]{1,}/[a-zA-Z0-9_\-/]{3,}(?:[\?|#][^"|']{0,}|))|([a-zA-Z0-9_\-]{1,}\.(?:php|asp|aspx|jsp|json|action|html|js|txt|xml)(?:[\?|#][^"|']{0,}|)))(?:"|')`)
+var Replacer = strings.NewReplacer(`\u003c`, `<`, `\u003e`, `>`, `\u0026`, `&`, `\/`, `/`)
 
 func main() {
     rawSource, err := ioutil.ReadAll(os.Stdin)
@@ -64,8 +65,7 @@ func parseHTML(source []byte) (links []string) {
         case html.TextToken:
             text := html.UnescapeString(token.String())
             text = strings.ToLower(strings.ReplaceAll(text, "\\", `\`))
-            replacer := strings.NewReplacer(`\u003c`, `<`, `\u003e`, `>`, `\u0026`, `&`)
-            text = replacer.Replace(text)
+            text = Replacer.Replace(text)
             reLinks := regexExtract(text)
             links = append(links, reLinks...)
         }
@@ -75,8 +75,7 @@ func parseHTML(source []byte) (links []string) {
 func parseOthers(source string) []string {
     links := make([]string, 0)
     source = strings.ToLower(strings.ReplaceAll(source, "\\", `\`))
-    replacer := strings.NewReplacer(`\u003c`, `<`, `\u003e`, `>`, `\u0026`, `&`)
-    source = replacer.Replace(source)
+    source = Replacer.Replace(source)
     reLinks := regexExtract(source)
     links = append(links, reLinks...)
     return links
