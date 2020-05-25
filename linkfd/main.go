@@ -13,8 +13,8 @@ import (
     "golang.org/x/net/html"
 )
 
-var re = regexp.MustCompile(`(?:"|')(((?:[a-zA-Z]{1,10}://|//)[^"'/]{1,}\.[a-zA-Z]{2,}[^"']{0,})|((?:/|\.\./|\./)[^"'><,;| *()(%%$^/\\\[\]][^"'><,;|()]{1,})|([a-zA-Z0-9_\-/]{1,}/[a-zA-Z0-9_\-/]{1,}\.(?:[a-zA-Z]{1,4}|action)(?:[\?|#][^"|']{0,}|))|([a-zA-Z0-9_\-/]{1,}/[a-zA-Z0-9_\-/]{3,}(?:[\?|#][^"|']{0,}|))|([a-zA-Z0-9_\-]{1,}\.(?:php|asp|aspx|jsp|json|action|html|js|txt|xml)(?:[\?|#][^"|']{0,}|)))(?:"|')`)
-var Replacer = strings.NewReplacer(`\u003c`, `<`, `\u003e`, `>`, `\u0026`, `&`, `\/`, `/`)
+var re = regexp.MustCompile(`(?:"|')(((?:[a-zA-Z]{1,10}://|//)[^"'/]{1,}\.[a-zA-Z]{2,}[^"']{0,})|((?:/|\.\./|\./)[^"'><,;| *()(%%$^/\\\[\]][^"'><,;|()]{1,})|([a-zA-Z0-9_\-/]{1,}/[a-zA-Z0-9_\-/]{1,}\.(?:[a-zA-Z]{1,4}|action)(?:[\?|#][^"|']{0,}|))|([a-zA-Z0-9_\-/]{1,}/[a-zA-Z0-9_\-/]{3,}(?:[\?|#][^"|']{0,}|))|([a-zA-Z0-9_\-]{1,}\.(?:php|asp|aspx|jsp|json|action|html|js|txt|xml|cgi)(?:[\?|#][^"|']{0,}|)))(?:"|')`)
+var Replacer = strings.NewReplacer(`\u003c`, `<`, `\u003e`, `>`, `\u0026`, `&`, `\u002f`, `/`, `\/`, `/`)
 
 func main() {
     rawSource, err := ioutil.ReadAll(os.Stdin)
@@ -22,6 +22,7 @@ func main() {
         panic(err)
     }
     contentType := http.DetectContentType(rawSource)
+    rawSource = bytes.ToLower(rawSource)
     var links []string
     if strings.Contains(contentType, "html") {
         links = parseHTML(rawSource)
@@ -35,9 +36,11 @@ func main() {
     uniqueLinks := unique(links)
     sort.Strings(uniqueLinks)
     for _, e := range uniqueLinks {
+        if len(e) == 0 {
+            continue
+        }
         fmt.Println(e)
     }
-
 }
 
 func parseHTML(source []byte) (links []string) {
@@ -64,7 +67,7 @@ func parseHTML(source []byte) (links []string) {
             }
         case html.TextToken:
             text := html.UnescapeString(token.String())
-            text = strings.ToLower(strings.ReplaceAll(text, "\\", `\`))
+            text = strings.ReplaceAll(text, "\\", `\`)
             text = Replacer.Replace(text)
             reLinks := regexExtract(text)
             links = append(links, reLinks...)
@@ -74,7 +77,7 @@ func parseHTML(source []byte) (links []string) {
 
 func parseOthers(source string) []string {
     links := make([]string, 0)
-    source = strings.ToLower(strings.ReplaceAll(source, "\\", `\`))
+    source = strings.ReplaceAll(source, "\\", `\`)
     source = Replacer.Replace(source)
     reLinks := regexExtract(source)
     links = append(links, reLinks...)
@@ -104,6 +107,7 @@ func GetSrc(t html.Token) (src string) {
 func filterNewLines(s string) string {
     return regexp.MustCompile(`[\t\r\n]+`).ReplaceAllString(strings.TrimSpace(s), " ")
 }
+
 func regexExtract(source string) []string {
     var links []string
     matches := re.FindAllStringSubmatch(source, -1)
