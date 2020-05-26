@@ -41,6 +41,7 @@ func main() {
         }
         fmt.Println(e)
     }
+    fmt.Println("============= DONE =============")
 }
 
 func parseHTML(source []byte) (links []string) {
