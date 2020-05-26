@@ -52,10 +52,10 @@ func parseHTML(source []byte) (links []string) {
         tokenType := htmlToken.Next()
         // Token returns the next Token
         token := htmlToken.Token()
-        switch tokenType {
-        case html.ErrorToken:
+        switch {
+        case tokenType == html.ErrorToken:
             return
-        case html.StartTagToken:
+        case tokenType == html.StartTagToken:
             switch token.Data {
             case "a":
                 links = append(links, GetHref(token))
@@ -65,8 +65,9 @@ func parseHTML(source []byte) (links []string) {
                 links = append(links, GetSrc(token))
             case "link":
                 links = append(links, GetHref(token))
+            default:
             }
-        case html.TextToken:
+        case tokenType == html.TextToken || tokenType == html.CommentToken:
             text := html.UnescapeString(token.String())
             text = strings.ReplaceAll(text, "\\", `\`)
             text = Replacer.Replace(text)
@@ -88,7 +89,7 @@ func parseOthers(source string) []string {
 // GetHref returns href values when present
 func GetHref(t html.Token) (href string) {
     for _, a := range t.Attr {
-        if a.Key == "href" && a.Val != "#" {
+        if (a.Key == "href" && a.Val != "#") || strings.Contains(a.Key, "href") {
             href = a.Val
         }
     }
