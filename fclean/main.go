@@ -123,7 +123,7 @@ func main() {
 func getSpams(results []Result) map[string]int {
 	m := make(map[string]int)
 	for _, r := range results {
-		f := fmt.Sprintf("%d,%d,%d,%d", r.StatusCode, r.ContentLines, r.ContentWords)
+		f := fmt.Sprintf("%d,%d,%d", r.StatusCode, r.ContentLines, r.ContentWords)
 		if _, ok := m[f]; !ok {
 			m[f] = 1
 		} else {
@@ -134,7 +134,7 @@ func getSpams(results []Result) map[string]int {
 }
 
 func isSpam(blacklist []string, r Result) bool {
-	f := fmt.Sprintf("%d,%d,%d,%d", r.StatusCode, r.ContentLines, r.ContentWords)
+	f := fmt.Sprintf("%d,%d,%d", r.StatusCode, r.ContentLines, r.ContentWords)
 	for _, e := range blacklist {
 		if f == e {
 			return true
