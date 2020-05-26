@@ -8,6 +8,9 @@ import (
     "regexp"
     "strconv"
     "strings"
+
+    "github.com/emirpasic/gods/sets/treeset"
+    "golang.org/x/net/publicsuffix"
 )
 
 // SUBRE is a regular expression that will match on all subdomains once the domain is appended.
@@ -24,20 +27,33 @@ func main() {
     flag.Parse()
     text, err := ioutil.ReadAll(os.Stdin)
     if err != nil {
-        panic(err)
+        return
     }
+    set := treeset.NewWithStringComparator()
     if domain == "" {
         for _, name := range anySubRE.FindAllString(string(text), -1) {
             name = cleanName(name)
-            fmt.Println(name)
+            if _, valid := publicsuffix.PublicSuffix(name); valid {
+                name = reverse(name)
+                if !set.Contains(name) {
+                    set.Add(name)
+                }
+            }
         }
     } else {
         subRE := SubdomainRegex(domain)
         for _, name := range subRE.FindAllString(string(text), -1) {
             name = cleanName(name)
-            fmt.Println(name)
+            name = reverse(name)
+            if !set.Contains(name) {
+                set.Add(name)
+            }
         }
     }
+    set.Each(func(_ int, value interface{}) {
+        fmt.Println(reverse(value.(string)))
+    })
+    fmt.Println("============= DONE =============")
 }
 
 // SubdomainRegex returns a Regexp object initialized to match
@@ -45,7 +61,6 @@ func main() {
 func SubdomainRegex(domain string) *regexp.Regexp {
     // Change all the periods into literal periods for the regex
     d := strings.Replace(domain, ".", "[.]", -1)
-
     return regexp.MustCompile(SUBRE + d)
 }
 
@@ -66,13 +81,21 @@ func cleanName(name string) string {
     name = strings.ToLower(name)
     for {
         name = strings.Trim(name, "-.")
-
         if i := nameStripRE.FindStringIndex(name); i != nil {
             name = name[i[1]:]
         } else {
             break
         }
     }
-
     return name
+}
+
+func reverse(s string) string {
+    b := make([]byte, len(s))
+    var j int = len(s) - 1
+    for i := 0; i <= j; i++ {
+        b[j-i] = s[i]
+    }
+
+    return string(b)
 }
