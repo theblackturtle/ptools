@@ -14,7 +14,27 @@ import (
 )
 
 var re = regexp.MustCompile(`(?:"|')(((?:[a-zA-Z]{1,10}://|//)[^"'/]{1,}\.[a-zA-Z]{2,}[^"']{0,})|((?:/|\.\./|\./)[^"'><,;| *()(%%$^/\\\[\]][^"'><,;|()]{1,})|([a-zA-Z0-9_\-/]{1,}/[a-zA-Z0-9_\-/]{1,}\.(?:[a-zA-Z]{1,4}|action)(?:[\?|#][^"|']{0,}|))|([a-zA-Z0-9_\-/]{1,}/[a-zA-Z0-9_\-/]{3,}(?:[\?|#][^"|']{0,}|))|([a-zA-Z0-9_\-]{1,}\.(?:php|asp|aspx|jsp|json|action|html|js|txt|xml|cgi)(?:[\?|#][^"|']{0,}|)))(?:"|')`)
-var Replacer = strings.NewReplacer(`\u003c`, `<`, `\u003e`, `>`, `\u0026`, `&`, `\u002f`, `/`, `\/`, `/`)
+var Replacer = strings.NewReplacer(
+    `\u003c`, `<`,
+    `\U003C`, `<`,
+    `\u003C`, `<`,
+    `\U003c`, `<`,
+
+    `\u003e`, `>`,
+    `\U003E`, `>`,
+    `\u003E`, `>`,
+    `\U003e`, `>`,
+
+    `\u0026`, `&`,
+    `\U0026`, `&`,
+
+    `\u002f`, `/`,
+    `\U002F`, `/`,
+    `\u002F`, `/`,
+    `\U002f`, `/`,
+
+    `\/`, `/`,
+)
 
 func main() {
     rawSource, err := ioutil.ReadAll(os.Stdin)
@@ -22,7 +42,8 @@ func main() {
         panic(err)
     }
     contentType := http.DetectContentType(rawSource)
-    rawSource = bytes.ToLower(rawSource)
+    rawSource = []byte(html.UnescapeString(string(rawSource)))
+
     var links []string
     if strings.Contains(contentType, "html") {
         links = parseHTML(rawSource)
