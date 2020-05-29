@@ -10,6 +10,7 @@ import (
     "sort"
     "strings"
 
+    "github.com/PuerkitoBio/goquery"
     "golang.org/x/net/html"
 )
 
@@ -67,35 +68,42 @@ func main() {
 
 func parseHTML(source []byte) (links []string) {
     links = make([]string, 0)
-    htmlToken := html.NewTokenizer(bytes.NewReader(source))
-    for {
-        // Next scans the next token and returns its type.
-        tokenType := htmlToken.Next()
-        // Token returns the next Token
-        token := htmlToken.Token()
-        switch {
-        case tokenType == html.ErrorToken:
-            return
-        case tokenType == html.StartTagToken:
-            switch token.Data {
-            case "a":
-                links = append(links, GetHref(token))
-            case "img":
-                links = append(links, GetSrc(token))
-            case "script":
-                links = append(links, GetSrc(token))
-            case "link":
-                links = append(links, GetHref(token))
-            default:
-            }
-        case tokenType == html.TextToken || tokenType == html.CommentToken:
-            text := html.UnescapeString(token.String())
-            text = strings.ReplaceAll(text, "\\", `\`)
-            text = Replacer.Replace(text)
-            reLinks := regexExtract(text)
-            links = append(links, reLinks...)
-        }
+    doc, err := goquery.NewDocumentFromReader(bytes.NewReader(source))
+    if err != nil {
+        return
     }
+    doc.Find("img").Each(func(i int, selection *goquery.Selection) {
+        n := selection.Get(0)
+        links = append(links, GetSrc(n)...)
+
+    })
+    doc.Find("script").Each(func(i int, selection *goquery.Selection) {
+        n := selection.Get(0)
+        links = append(links, GetSrc(n)...)
+
+    })
+    doc.Find("a").Each(func(i int, selection *goquery.Selection) {
+        n := selection.Get(0)
+        links = append(links, GetHref(n)...)
+    })
+    doc.Find("link").Each(func(i int, selection *goquery.Selection) {
+        n := selection.Get(0)
+        links = append(links, GetHref(n)...)
+    })
+    // doc.Contents().Each(func(i int, selection *goquery.Selection) {
+    //     // fmt.Println(selection.Text())
+    //     if goquery.NodeName(selection) == "#text" {
+    //         fmt.Println(selection.Text())
+    //     }
+    // })
+    //         case tokenType == html.TextToken || tokenType == html.CommentToken:
+    //             text := html.UnescapeString(token.String())
+    //             text = strings.ReplaceAll(text, "\\", `\`)
+    //             text = Replacer.Replace(text)
+    //             reLinks := regexExtract(text)
+    //             links = append(links, reLinks...)
+
+    return
 }
 
 func parseOthers(source string) []string {
@@ -108,20 +116,22 @@ func parseOthers(source string) []string {
 }
 
 // GetHref returns href values when present
-func GetHref(t html.Token) (href string) {
+func GetHref(t *html.Node) (hrefs []string) {
+    hrefs = make([]string, 0)
     for _, a := range t.Attr {
-        if (a.Key == "href" && a.Val != "#") || strings.Contains(a.Key, "href") {
-            href = a.Val
+        if strings.Contains(a.Key, "href") && a.Val != "#" {
+            hrefs = append(hrefs, a.Val)
         }
     }
     return
 }
 
 // GetSrc returns src values when present
-func GetSrc(t html.Token) (src string) {
+func GetSrc(t *html.Node) (srcs []string) {
+    srcs = make([]string, 0)
     for _, a := range t.Attr {
-        if a.Key == "src" {
-            src = a.Val
+        if strings.Contains(a.Key, "src") {
+            srcs = append(srcs, a.Val)
         }
     }
     return
