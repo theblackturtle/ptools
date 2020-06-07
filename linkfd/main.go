@@ -35,6 +35,7 @@ var Replacer = strings.NewReplacer(
     `\U002f`, `/`,
 
     `\/`, `/`,
+    `\\`, `\`,
 )
 
 func main() {
@@ -108,7 +109,6 @@ func parseHTML(source []byte) (links []string) {
 
 func parseOthers(source string) []string {
     links := make([]string, 0)
-    source = strings.ReplaceAll(source, "\\", `\`)
     source = Replacer.Replace(source)
     reLinks := regexExtract(source)
     links = append(links, reLinks...)
