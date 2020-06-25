@@ -44,13 +44,16 @@ func main() {
         panic(err)
     }
     contentType := http.DetectContentType(rawSource)
-    rawSource = []byte(html.UnescapeString(string(rawSource)))
+    rawSourceStr := string(rawSource)
+    rawSourceStr = html.UnescapeString(html.UnescapeString(rawSourceStr))
+
+    rawSource = []byte(rawSourceStr)
 
     var links []string
     if strings.Contains(contentType, "html") {
         links = parseHTML(rawSource)
     } else if strings.Contains(contentType, "text") {
-        links = parseOthers(string(rawSource))
+        links = parseOthers(rawSourceStr)
     } else {
         fmt.Println("Not support this content type yet")
         os.Exit(0)
@@ -81,8 +84,10 @@ func parseHTML(source []byte) (links []string) {
     doc.Find("script").Each(func(i int, selection *goquery.Selection) {
         n := selection.Get(0)
         links = append(links, GetSrc(n)...)
-
+        scriptText := selection.Text()
+        links = append(links, parseOthers(scriptText)...)
     })
+
     doc.Find("a").Each(func(i int, selection *goquery.Selection) {
         n := selection.Get(0)
         links = append(links, GetHref(n)...)
@@ -91,25 +96,13 @@ func parseHTML(source []byte) (links []string) {
         n := selection.Get(0)
         links = append(links, GetHref(n)...)
     })
-    // doc.Contents().Each(func(i int, selection *goquery.Selection) {
-    //     // fmt.Println(selection.Text())
-    //     if goquery.NodeName(selection) == "#text" {
-    //         fmt.Println(selection.Text())
-    //     }
-    // })
-    //         case tokenType == html.TextToken || tokenType == html.CommentToken:
-    //             text := html.UnescapeString(token.String())
-    //             text = strings.ReplaceAll(text, "\\", `\`)
-    //             text = Replacer.Replace(text)
-    //             reLinks := regexExtract(text)
-    //             links = append(links, reLinks...)
-
     return
 }
 
 func parseOthers(source string) []string {
     links := make([]string, 0)
     source = Replacer.Replace(source)
+    source = html.UnescapeString(source)
     reLinks := regexExtract(source)
     links = append(links, reLinks...)
     return links
