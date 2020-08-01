@@ -40,6 +40,7 @@ var (
     saveResponse  bool
     outputFolder  string
     ignore404Html bool
+    verbose       bool
 )
 
 type Response struct {
@@ -64,6 +65,7 @@ func main() {
     flag.BoolVar(&saveResponse, "s", false, "Save response")
     flag.StringVar(&outputFolder, "o", "out", "Output folder")
     flag.BoolVar(&ignore404Html, "x", false, "Ignore HTML response with 404 and 429 status code")
+    flag.BoolVar(&verbose, "v", false, "Enable verbose")
     flag.Parse()
 
     if inputFile == "" {
@@ -93,7 +95,9 @@ func main() {
         u := i.(string)
         response, err := request(u)
         if err != nil {
-            fmt.Fprintf(os.Stderr, "%s error: %s\n", u, err)
+            if verbose {
+                fmt.Fprintf(os.Stderr, "%s error: %s\n", u, err)
+            }
             return
         }
 
@@ -128,8 +132,7 @@ func main() {
         if line == "" {
             continue
         }
-        u, err := url.Parse(line)
-        if err == nil {
+        if u, err := url.Parse(line); err == nil {
             wg.Add(1)
             p.Invoke(u.String())
         }
@@ -159,18 +162,21 @@ func request(u string) (Response, error) {
                 return response, fmt.Errorf("request error: %s", err)
             }
         }
-        if fasthttp.StatusCodeIsRedirect(resp.StatusCode()) && redirect {
+        if fasthttp.StatusCodeIsRedirect(resp.StatusCode()) {
             redirectsCount++
             if redirectsCount > MaxRedirectTimes {
-                return response, errors.New("too many redirects")
+                return response, fmt.Errorf("too many redirects")
             }
 
             nextLocation := resp.Header.Peek(fasthttp.HeaderLocation)
             if len(nextLocation) == 0 {
-                return response, errors.New("location header not found")
+                return response, fmt.Errorf("location header not found")
             }
-            u = getRedirectURL(u, nextLocation)
-            continue
+            tempUrl := getRedirectURL(u, nextLocation)
+            if redirect || justRedirectToHTTPS(u, tempUrl) {
+                u = tempUrl
+                continue
+            }
         }
         break
     }
@@ -198,7 +204,6 @@ func request(u string) (Response, error) {
         }
     default:
         body = resp.Body()
-
     }
 
     var history []string
@@ -279,4 +284,19 @@ func getRedirectURL(baseURL string, location []byte) string {
     redirectURL := u.String()
     fasthttp.ReleaseURI(u)
     return redirectURL
+}
+
+func justRedirectToHTTPS(originalUrl, redirectUrl string) bool {
+    oUrl, err := url.Parse(originalUrl)
+    if err != nil {
+        return false
+    }
+    rUrl, err := url.Parse(redirectUrl)
+    if err != nil {
+        return false
+    }
+    if oUrl.Hostname() == rUrl.Hostname() && oUrl.EscapedPath() == rUrl.EscapedPath() && oUrl.RawQuery == rUrl.RawQuery {
+        return true
+    }
+    return false
 }
