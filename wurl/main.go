@@ -12,6 +12,8 @@ import (
     "net/url"
     "os"
     "path"
+    "regexp"
+    "strconv"
     "strings"
     "sync"
     "time"
@@ -31,7 +33,9 @@ const (
 )
 
 var (
-    client        *fasthttp.Client
+    client     *fasthttp.Client
+    titleRegex = regexp.MustCompile(`<[Tt][Ii][Tt][Ll][Ee][^>]*>([^<]*)</[Tt][Ii][Tt][Ll][Ee]>`)
+
     jsonOutput    bool
     redirect      bool
     threads       int
@@ -53,6 +57,7 @@ type Response struct {
     WordsSize       int64    `json:"words_size,omitempty"`
     LinesSize       int64    `json:"lines_size,omitempty"`
     Filename        string   `json:"file_name,omitempty"`
+    RequestTime     string
 }
 
 func main() {
@@ -142,6 +147,7 @@ func main() {
 
 func request(u string) (Response, error) {
     var response Response
+    var elapsed string
     req := fasthttp.AcquireRequest()
     defer fasthttp.ReleaseRequest(req)
     req.Header.Set("User-Agent", UserAgent)
@@ -151,9 +157,11 @@ func request(u string) (Response, error) {
     resp := fasthttp.AcquireResponse()
     defer fasthttp.ReleaseResponse(resp)
 
+    var history []string
     redirectsCount := 0
     for {
         req.SetRequestURI(u)
+        start := time.Now()
         err := client.DoTimeout(req, resp, timeout)
         if err != nil {
             if errors.Is(err, fasthttp.ErrBodyTooLarge) {
@@ -162,6 +170,7 @@ func request(u string) (Response, error) {
                 return response, fmt.Errorf("request error: %s", err)
             }
         }
+        elapsed = time.Since(start).String()
         if fasthttp.StatusCodeIsRedirect(resp.StatusCode()) {
             redirectsCount++
             if redirectsCount > MaxRedirectTimes {
@@ -173,6 +182,7 @@ func request(u string) (Response, error) {
                 return response, fmt.Errorf("location header not found")
             }
             tempUrl := getRedirectURL(u, nextLocation)
+            history = append(history, tempUrl)
             if redirect || justRedirectToHTTPS(u, tempUrl) {
                 u = tempUrl
                 continue
@@ -206,13 +216,6 @@ func request(u string) (Response, error) {
         body = resp.Body()
     }
 
-    var history []string
-    // Get redirect history
-    nextLocation := resp.Header.Peek(fasthttp.HeaderLocation)
-    if len(nextLocation) > 0 {
-        nextURL := getRedirectURL(u, nextLocation)
-        history = append(history, nextURL)
-    }
     bodyString := string(body)
     ipAddress := resp.RemoteAddr().String()
 
@@ -225,9 +228,10 @@ func request(u string) (Response, error) {
         Size:            int64(utf8.RuneCountInString(bodyString)),
         WordsSize:       int64(len(strings.Split(bodyString, " "))),
         LinesSize:       int64(len(strings.Split(bodyString, "\n"))),
+        RequestTime:     elapsed,
     }
     if saveResponse {
-        savePath := save(bodyString, req, resp)
+        savePath := save(bodyString, req, resp, response)
         if savePath != "" {
             response.Filename = savePath
         }
@@ -235,7 +239,7 @@ func request(u string) (Response, error) {
     return response, nil
 }
 
-func save(bodyString string, req *fasthttp.Request, resp *fasthttp.Response) string {
+func save(bodyString string, req *fasthttp.Request, resp *fasthttp.Response, r Response) string {
     hash := sha1.Sum([]byte(req.URI().String()))
     respPath := path.Join(outputFolder, string(req.URI().Host()), fmt.Sprintf("%x", hash))
     err := os.MkdirAll(path.Dir(respPath), 0750)
@@ -253,15 +257,33 @@ func save(bodyString string, req *fasthttp.Request, resp *fasthttp.Response) str
     buf.WriteString(req.URI().String())
     buf.WriteString("\n\n")
 
+    // Summary
+    title := titleRegex.FindStringSubmatch(bodyString)
+    if len(title) > 0 {
+        buf.WriteString("# Title: " + title[1])
+        buf.WriteString("\n")
+    }
+    nextLocation := string(resp.Header.Peek("Location"))
+    if nextLocation != "" {
+        buf.WriteString("# Location: " + nextLocation)
+        buf.WriteString("\n")
+    }
+    buf.WriteString("# Words: " + strconv.FormatInt(r.WordsSize, 10))
+    buf.WriteString("\n")
+    buf.WriteString("# Lines: " + strconv.FormatInt(r.LinesSize, 10))
+    buf.WriteString("\n")
+    buf.WriteString("# IP: " + r.IpAddress)
+    buf.WriteString("\n")
+    buf.WriteString("# Request Time: " + r.RequestTime)
+
+    buf.WriteString("\n\n")
+
     // request headers
     req.Header.VisitAll(func(key, value []byte) {
         buf.WriteString(fmt.Sprintf("> %s: %s\n", string(key), string(value)))
     })
 
     buf.WriteString("\n")
-
-    // TODO: Request time
-    // buf.WriteString(fmt.Sprintf("< Request Time: %d secs\n", resp.ReceivedAt().Second()))
 
     // Response headers
     buf.WriteString(fmt.Sprintf("< HTTP/1.1 %d\n", resp.StatusCode()))
