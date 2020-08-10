@@ -25,15 +25,15 @@ import (
 )
 
 const (
-    UserAgent        = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.132 Safari/537.36"
-    Accept           = "*/*"
-    AcceptLang       = "en-US,en;q=0.8"
-    MaxBodySize      = 5242880
-    MaxRedirectTimes = 16
+    UserAgent   = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.132 Safari/537.36"
+    Accept      = "*/*"
+    AcceptLang  = "en-US,en;q=0.8"
+    MaxBodySize = 5242880
 )
 
 var (
     client     *fasthttp.Client
+    Pool       *ants.PoolWithFunc
     titleRegex = regexp.MustCompile(`<[Tt][Ii][Tt][Ll][Ee][^>]*>([^<]*)</[Tt][Ii][Tt][Ll][Ee]>`)
 
     jsonOutput    bool
@@ -95,7 +95,7 @@ func main() {
     }
 
     var wg sync.WaitGroup
-    p, _ := ants.NewPoolWithFunc(threads, func(i interface{}) {
+    Pool, _ = ants.NewPoolWithFunc(threads, func(i interface{}) {
         defer wg.Done()
         u := i.(string)
         response, err := request(u)
@@ -120,7 +120,7 @@ func main() {
             }
         }
     }, ants.WithPreAlloc(true))
-    defer p.Release()
+    defer Pool.Release()
 
     var sc *bufio.Scanner
     if inputFile == "-" {
@@ -139,7 +139,7 @@ func main() {
         }
         if u, err := url.Parse(line); err == nil {
             wg.Add(1)
-            p.Invoke(u.String())
+            Pool.Invoke(u.String())
         }
     }
     wg.Wait()
@@ -158,37 +158,29 @@ func request(u string) (Response, error) {
     defer fasthttp.ReleaseResponse(resp)
 
     var history []string
-    redirectsCount := 0
-    for {
-        req.SetRequestURI(u)
-        start := time.Now()
-        err := client.DoTimeout(req, resp, timeout)
-        if err != nil {
-            if errors.Is(err, fasthttp.ErrBodyTooLarge) {
-                return Response{}, nil
-            } else {
-                return response, fmt.Errorf("request error: %s", err)
-            }
-        }
-        elapsed = time.Since(start).String()
-        if fasthttp.StatusCodeIsRedirect(resp.StatusCode()) {
-            redirectsCount++
-            if redirectsCount > MaxRedirectTimes {
-                return response, fmt.Errorf("too many redirects")
-            }
 
-            nextLocation := resp.Header.Peek(fasthttp.HeaderLocation)
-            if len(nextLocation) == 0 {
-                return response, fmt.Errorf("location header not found")
-            }
-            tempUrl := getRedirectURL(u, nextLocation)
-            history = append(history, tempUrl)
-            if redirect || justRedirectToHTTPS(u, tempUrl) {
-                u = tempUrl
-                continue
-            }
+    req.SetRequestURI(u)
+    start := time.Now()
+    err := client.DoTimeout(req, resp, timeout)
+    if err != nil {
+        if errors.Is(err, fasthttp.ErrBodyTooLarge) {
+            return Response{}, nil
+        } else {
+            return response, fmt.Errorf("request error: %s", err)
         }
-        break
+    }
+    elapsed = time.Since(start).String()
+    if fasthttp.StatusCodeIsRedirect(resp.StatusCode()) {
+
+        nextLocation := resp.Header.Peek(fasthttp.HeaderLocation)
+        if len(nextLocation) == 0 {
+            return response, fmt.Errorf("location header not found")
+        }
+        tempUrl := getRedirectURL(u, nextLocation)
+        history = append(history, tempUrl)
+        if redirect || justRedirectToHTTPS(u, tempUrl) {
+            Pool.Invoke(tempUrl) // Add it direct to pool, we can get all of redirects
+        }
     }
 
     contentType := string(resp.Header.Peek(fasthttp.HeaderContentType))
@@ -200,7 +192,6 @@ func request(u string) (Response, error) {
 
     contentEncoding := string(resp.Header.Peek(fasthttp.HeaderContentEncoding))
     var body []byte
-    var err error
     switch contentEncoding {
     case "gzip":
         body, err = resp.BodyGunzip()
