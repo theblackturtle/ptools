@@ -32,8 +32,10 @@ const (
 )
 
 var (
-    client     *fasthttp.Client
-    Pool       *ants.PoolWithFunc
+    client *fasthttp.Client
+    Pool   *ants.PoolWithFunc
+    wg     sync.WaitGroup
+
     titleRegex = regexp.MustCompile(`<[Tt][Ii][Tt][Ll][Ee][^>]*>([^<]*)</[Tt][Ii][Tt][Ll][Ee]>`)
 
     jsonOutput    bool
@@ -94,11 +96,10 @@ func main() {
         MaxResponseBodySize: MaxBodySize,
     }
 
-    var wg sync.WaitGroup
     Pool, _ = ants.NewPoolWithFunc(threads, func(i interface{}) {
         defer wg.Done()
         u := i.(string)
-        response, err := request(u)
+        response, err := Request(u)
         if err != nil {
             if verbose {
                 fmt.Fprintf(os.Stderr, "%s error: %s\n", u, err)
@@ -145,7 +146,7 @@ func main() {
     wg.Wait()
 }
 
-func request(u string) (Response, error) {
+func Request(u string) (Response, error) {
     var response Response
     var elapsed string
     req := fasthttp.AcquireRequest()
@@ -159,14 +160,16 @@ func request(u string) (Response, error) {
 
     var history []string
 
-    req.SetRequestURI(u)
+    // req.SetRequestURI(u)
+    req.Header.SetRequestURI(u)
+
     start := time.Now()
     err := client.DoTimeout(req, resp, timeout)
     if err != nil {
         if errors.Is(err, fasthttp.ErrBodyTooLarge) {
             return Response{}, nil
         } else {
-            return response, fmt.Errorf("request error: %s", err)
+            return response, fmt.Errorf("Request error: %s", err)
         }
     }
     elapsed = time.Since(start).String()
@@ -179,6 +182,7 @@ func request(u string) (Response, error) {
         tempUrl := getRedirectURL(u, nextLocation)
         history = append(history, tempUrl)
         if redirect || justRedirectToHTTPS(u, tempUrl) {
+            wg.Add(1)
             Pool.Invoke(tempUrl) // Add it direct to pool, we can get all of redirects
         }
     }
@@ -269,7 +273,7 @@ func save(bodyString string, req *fasthttp.Request, resp *fasthttp.Response, r R
 
     buf.WriteString("\n\n")
 
-    // request headers
+    // Request headers
     req.Header.VisitAll(func(key, value []byte) {
         buf.WriteString(fmt.Sprintf("> %s: %s\n", string(key), string(value)))
     })
