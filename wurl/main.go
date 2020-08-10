@@ -38,6 +38,8 @@ var (
     wg     sync.WaitGroup
 
     titleRegex = regexp.MustCompile(`<[Tt][Ii][Tt][Ll][Ee][^>]*>([^<]*)</[Tt][Ii][Tt][Ll][Ee]>`)
+    wordRegex  = regexp.MustCompile(`[^.a-zA-Z0-9_-]`)
+    headerList = make(headerArgs, 0)
 
     jsonOutput    bool
     redirect      bool
@@ -57,10 +59,22 @@ type Response struct {
     StatusCode      int      `json:"status_code,omitempty"`
     ContentType     string   `json:"content_type,omitempty"`
     Size            int64    `json:"size,omitempty"`
-    WordsSize       int64    `json:"words_size,omitempty"`
+    WordsSize       int      `json:"words_size,omitempty"`
     LinesSize       int64    `json:"lines_size,omitempty"`
     Filename        string   `json:"file_name,omitempty"`
     RequestTime     string
+}
+
+type headerArgs map[string]string
+
+func (h headerArgs) String() string {
+    return ""
+}
+
+func (h *headerArgs) Set(val string) error {
+    args := strings.SplitN(val, ":", 2)
+    (*h)[strings.TrimSpace(args[0])] = strings.TrimSpace(args[1])
+    return nil
 }
 
 func main() {
@@ -74,6 +88,7 @@ func main() {
     flag.StringVar(&outputFolder, "o", "out", "Output folder")
     flag.BoolVar(&ignore404Html, "x", false, "Ignore HTML response with 404 and 429 status code")
     flag.BoolVar(&verbose, "v", false, "Enable verbose")
+    flag.Var(&headerList, "H", "Header to request, can set multiple (Host: localhost)")
     flag.Parse()
 
     if inputFile == "" {
@@ -155,6 +170,11 @@ func Request(u string) (Response, error) {
     req.Header.Set("User-Agent", UserAgent)
     req.Header.Set("Accept", Accept)
     req.Header.Set("Accept-Language", AcceptLang)
+    if len(headerList) > 0 {
+        for key, value := range headerList {
+            req.Header.Set(key, value)
+        }
+    }
 
     resp := fasthttp.AcquireResponse()
     defer fasthttp.ReleaseResponse(resp)
@@ -222,7 +242,7 @@ func Request(u string) (Response, error) {
         StatusCode:      resp.StatusCode(),
         ContentType:     contentType,
         Size:            int64(utf8.RuneCountInString(bodyString)),
-        WordsSize:       int64(len(strings.Split(bodyString, " "))),
+        WordsSize:       len(wordRegex.FindAllString(bodyString, -1)),
         LinesSize:       int64(len(strings.Split(bodyString, "\n"))),
         RequestTime:     elapsed,
     }
@@ -264,7 +284,7 @@ func save(bodyString string, req *fasthttp.Request, resp *fasthttp.Response, r R
         buf.WriteString("# Location: " + nextLocation)
         buf.WriteString("\n")
     }
-    buf.WriteString("# Words: " + strconv.FormatInt(r.WordsSize, 10))
+    buf.WriteString("# Words: " + strconv.Itoa(r.WordsSize))
     buf.WriteString("\n")
     buf.WriteString("# Lines: " + strconv.FormatInt(r.LinesSize, 10))
     buf.WriteString("\n")
