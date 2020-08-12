@@ -30,6 +30,7 @@ const (
     Accept      = "*/*"
     AcceptLang  = "en-US,en;q=0.8"
     MaxBodySize = 5242880
+    MaxRedirect = 16
 )
 
 var (
@@ -49,7 +50,7 @@ var (
     saveResponse  bool
     outputFolder  string
     ignore404Html bool
-    verbose       bool
+    debug         bool
 )
 
 type Response struct {
@@ -63,6 +64,11 @@ type Response struct {
     LinesSize       int64    `json:"lines_size,omitempty"`
     Filename        string   `json:"file_name,omitempty"`
     RequestTime     string
+}
+
+type Task struct {
+    Url          string
+    RedirectTime int
 }
 
 type headerArgs map[string]string
@@ -87,7 +93,7 @@ func main() {
     flag.BoolVar(&saveResponse, "s", false, "Save response")
     flag.StringVar(&outputFolder, "o", "out", "Output folder")
     flag.BoolVar(&ignore404Html, "x", false, "Ignore HTML response with 404 and 429 status code")
-    flag.BoolVar(&verbose, "v", false, "Enable verbose")
+    flag.BoolVar(&debug, "d", false, "Enable debug")
     flag.Var(&headerList, "H", "Header to request, can set multiple (Host: localhost)")
     flag.Parse()
 
@@ -106,19 +112,26 @@ func main() {
             InsecureSkipVerify: true,
             Renegotiation:      tls.RenegotiateOnceAsClient, // For "local error: tls: no renegotiation"
         },
-        ReadBufferSize:      48 * 1024,
-        WriteBufferSize:     48 * 1024,
+        ReadBufferSize:      48 << 10, // 48KB
+        WriteBufferSize:     48 << 10,
         MaxConnsPerHost:     1024,
         MaxResponseBodySize: MaxBodySize,
     }
 
-    Pool, _ = ants.NewPoolWithFunc(threads, func(i interface{}) {
+    worker := func(i interface{}) {
         defer wg.Done()
-        u := i.(string)
-        response, err := Request(u)
+        task := i.(Task)
+        if task.RedirectTime > MaxRedirect {
+            if debug {
+                fmt.Fprintf(os.Stderr, "%s redirect more than 16 times\n", task.Url)
+            }
+            return
+        }
+
+        response, err := Request(task)
         if err != nil {
-            if verbose {
-                fmt.Fprintf(os.Stderr, "%s error: %s\n", u, err)
+            if debug {
+                fmt.Fprintf(os.Stderr, "%s error: %s\n", task.Url, err)
             }
             return
         }
@@ -136,7 +149,9 @@ func main() {
                 fmt.Println(format)
             }
         }
-    }, ants.WithPreAlloc(true))
+    }
+
+    Pool, _ = ants.NewPoolWithFunc(threads, worker, ants.WithPreAlloc(true))
     defer Pool.Release()
 
     var sc *bufio.Scanner
@@ -155,14 +170,18 @@ func main() {
             continue
         }
         if u, err := url.Parse(line); err == nil {
+            task := Task{
+                Url:          u.String(),
+                RedirectTime: 0,
+            }
             wg.Add(1)
-            Pool.Invoke(u.String())
+            Pool.Invoke(task)
         }
     }
     wg.Wait()
 }
 
-func Request(u string) (Response, error) {
+func Request(task Task) (Response, error) {
     var response Response
     var elapsed string
     req := fasthttp.AcquireRequest()
@@ -182,7 +201,7 @@ func Request(u string) (Response, error) {
     var history []string
 
     // req.SetRequestURI(u)
-    req.Header.SetRequestURI(u)
+    req.Header.SetRequestURI(task.Url)
 
     start := time.Now()
     err := client.DoTimeout(req, resp, timeout)
@@ -195,16 +214,19 @@ func Request(u string) (Response, error) {
     }
     elapsed = time.Since(start).String()
     if fasthttp.StatusCodeIsRedirect(resp.StatusCode()) {
-
         nextLocation := resp.Header.Peek(fasthttp.HeaderLocation)
         if len(nextLocation) == 0 {
             return response, fmt.Errorf("location header not found")
         }
-        tempUrl := getRedirectURL(u, nextLocation)
-        history = append(history, tempUrl)
-        if redirect || justRedirectToHTTPS(u, tempUrl) {
+        nextUrl := getRedirectURL(task.Url, nextLocation)
+        history = append(history, nextUrl)
+        if redirect || justRedirectToHTTPS(task.Url, nextUrl) {
             wg.Add(1)
-            Pool.Invoke(tempUrl) // Add it direct to pool, we can get all of redirects
+            newTask := Task{
+                Url:          nextUrl,
+                RedirectTime: task.RedirectTime + 1,
+            }
+            Pool.Invoke(newTask) // Add it direct to pool, we can get all of redirects
         }
     }
 
