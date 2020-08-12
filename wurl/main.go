@@ -10,6 +10,7 @@ import (
     "fmt"
     "html"
     "net"
+    "net/http"
     "net/url"
     "os"
     "path"
@@ -117,6 +118,20 @@ func main() {
         MaxConnsPerHost:     1024,
         MaxResponseBodySize: MaxBodySize,
     }
+    var indexFile *os.File
+    if saveResponse {
+        err := os.MkdirAll(outputFolder, 0755)
+        if err != nil {
+            fmt.Fprintf(os.Stderr, "Failed to create new directory: %s\n", err)
+            os.Exit(1)
+        }
+        indexFile, err = os.OpenFile(path.Join(outputFolder, "index"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, os.ModePerm)
+        if err != nil {
+            fmt.Fprintf(os.Stderr, "Failed to create index file: %s\n", err)
+            os.Exit(1)
+        }
+        defer indexFile.Close()
+    }
 
     worker := func(i interface{}) {
         defer wg.Done()
@@ -142,8 +157,8 @@ func main() {
             }
         } else {
             if saveResponse {
-                format := fmt.Sprintf("%s - [%d-%s] %s %d %d %d %v", response.Filename, response.StatusCode, strings.Split(response.ContentType, ";")[0], response.Url, response.Size, response.WordsSize, response.LinesSize, response.RedirectHistory)
-                fmt.Println(format)
+                format := fmt.Sprintf("%s [%d-%s] %s %d %d %d %v", response.Filename, response.StatusCode, strings.Split(response.ContentType, ";")[0], response.Url, response.Size, response.WordsSize, response.LinesSize, response.RedirectHistory)
+                indexFile.WriteString(format + "\n")
             } else {
                 format := fmt.Sprintf("[%d-%s] %s %d %d %d %v", response.StatusCode, strings.Split(response.ContentType, ";")[0], response.Url, response.Size, response.WordsSize, response.LinesSize, response.RedirectHistory)
                 fmt.Println(format)
@@ -324,7 +339,7 @@ func save(bodyString string, req *fasthttp.Request, resp *fasthttp.Response, r R
     buf.WriteString("\n")
 
     // Response headers
-    buf.WriteString(fmt.Sprintf("< HTTP/1.1 %d\n", resp.StatusCode()))
+    buf.WriteString(fmt.Sprintf("< HTTP/1.1 %d %s\n", resp.StatusCode(), http.StatusText(resp.StatusCode())))
     resp.Header.VisitAll(func(key, value []byte) {
         buf.WriteString(fmt.Sprintf("< %s: %s\n", string(key), string(value)))
     })
