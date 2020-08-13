@@ -40,7 +40,7 @@ var (
     wg     sync.WaitGroup
 
     titleRegex = regexp.MustCompile(`<[Tt][Ii][Tt][Ll][Ee][^>]*>([^<]*)</[Tt][Ii][Tt][Ll][Ee]>`)
-    wordRegex  = regexp.MustCompile(`[^.a-zA-Z0-9_-]`)
+    // wordRegex  = regexp.MustCompile(`[^.a-zA-Z0-9_-]`)
     headerList = make(headerArgs, 0)
 
     jsonOutput    bool
@@ -61,7 +61,7 @@ type Response struct {
     StatusCode      int      `json:"status_code,omitempty"`
     ContentType     string   `json:"content_type,omitempty"`
     Size            int64    `json:"size,omitempty"`
-    WordsSize       int      `json:"words_size,omitempty"`
+    WordsSize       int64    `json:"words_size,omitempty"`
     LinesSize       int64    `json:"lines_size,omitempty"`
     Filename        string   `json:"file_name,omitempty"`
     RequestTime     string
@@ -113,11 +113,13 @@ func main() {
             InsecureSkipVerify: true,
             Renegotiation:      tls.RenegotiateOnceAsClient, // For "local error: tls: no renegotiation"
         },
-        ReadBufferSize:      48 << 10, // 48KB
-        WriteBufferSize:     48 << 10,
-        MaxConnsPerHost:     1024,
-        MaxResponseBodySize: MaxBodySize,
+        ReadBufferSize:         48 << 10, // 48KB
+        WriteBufferSize:        48 << 10,
+        MaxConnsPerHost:        1024,
+        MaxResponseBodySize:    MaxBodySize,
+        DisablePathNormalizing: true,
     }
+
     var indexFile *os.File
     if saveResponse {
         err := os.MkdirAll(outputFolder, 0755)
@@ -279,9 +281,10 @@ func Request(task Task) (Response, error) {
         StatusCode:      resp.StatusCode(),
         ContentType:     contentType,
         Size:            int64(utf8.RuneCountInString(bodyString)),
-        WordsSize:       len(wordRegex.FindAllString(bodyString, -1)),
-        LinesSize:       int64(len(strings.Split(bodyString, "\n"))),
-        RequestTime:     elapsed,
+        // WordsSize:       len(wordRegex.FindAllString(bodyString, -1)),
+        WordsSize:   int64(len(strings.Split(bodyString, " "))),
+        LinesSize:   int64(len(strings.Split(bodyString, "\n"))),
+        RequestTime: elapsed,
     }
     if saveResponse {
         savePath := save(bodyString, req, resp, response)
@@ -321,7 +324,9 @@ func save(bodyString string, req *fasthttp.Request, resp *fasthttp.Response, r R
         buf.WriteString("# Location: " + nextLocation)
         buf.WriteString("\n")
     }
-    buf.WriteString("# Words: " + strconv.Itoa(r.WordsSize))
+    buf.WriteString("# Size: " + strconv.FormatInt(r.Size, 10))
+    buf.WriteString("\n")
+    buf.WriteString("# Words: " + strconv.FormatInt(r.WordsSize, 10))
     buf.WriteString("\n")
     buf.WriteString("# Lines: " + strconv.FormatInt(r.LinesSize, 10))
     buf.WriteString("\n")
