@@ -2,6 +2,7 @@ package main
 
 import (
     "bytes"
+    "flag"
     "fmt"
     "io/ioutil"
     "net/http"
@@ -39,6 +40,9 @@ var Replacer = strings.NewReplacer(
 )
 
 func main() {
+    var printDone bool
+    flag.BoolVar(&printDone, "p", false, "Print DONE when finish")
+    flag.Parse()
     rawSource, err := ioutil.ReadAll(os.Stdin)
     if err != nil {
         panic(err)
@@ -67,7 +71,9 @@ func main() {
         }
         fmt.Println(e)
     }
-    fmt.Println("============= DONE =============")
+    if printDone {
+        fmt.Println("============= DONE =============")
+    }
 }
 
 func parseHTML(source []byte) (links []string) {
