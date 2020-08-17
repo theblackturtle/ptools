@@ -316,7 +316,7 @@ func save(bodyString string, req *fasthttp.Request, resp *fasthttp.Response, r R
     // Summary
     title := titleRegex.FindStringSubmatch(bodyString)
     if len(title) > 0 {
-        buf.WriteString("# Title: " + html.UnescapeString(title[1]))
+        buf.WriteString("# Title: " + strings.TrimSpace(html.UnescapeString(title[1])))
         buf.WriteString("\n")
     }
     nextLocation := string(resp.Header.Peek("Location"))
