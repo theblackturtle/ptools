@@ -35,7 +35,7 @@ const (
 )
 
 var (
-    client *fasthttp.Client
+    Client *fasthttp.Client
     Pool   *ants.PoolWithFunc
     wg     sync.WaitGroup
 
@@ -104,7 +104,7 @@ func main() {
     }
 
     timeout = time.Duration(timeoutInt) * time.Second
-    client = &fasthttp.Client{
+    Client = &fasthttp.Client{
         NoDefaultUserAgentHeader: true,
         Dial: func(addr string) (net.Conn, error) {
             return fasthttp.DialDualStackTimeout(addr, time.Second*30)
@@ -221,7 +221,7 @@ func Request(task Task) (Response, error) {
     req.Header.SetRequestURI(task.Url)
 
     start := time.Now()
-    err := client.DoTimeout(req, resp, timeout)
+    err := Client.DoTimeout(req, resp, timeout)
     if err != nil {
         if errors.Is(err, fasthttp.ErrBodyTooLarge) {
             return Response{}, nil
@@ -349,7 +349,9 @@ func save(bodyString string, req *fasthttp.Request, resp *fasthttp.Response, r R
         buf.WriteString(fmt.Sprintf("< %s: %s\n", string(key), string(value)))
     })
 
-    buf.WriteString("\n")
+    // buf.WriteString("\n")
+    buf.Write([]byte("\r\n"))
+
     buf.WriteString(bodyString)
 
     respFile.WriteString(buf.String())
