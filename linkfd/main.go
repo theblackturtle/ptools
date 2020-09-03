@@ -12,7 +12,6 @@ import (
     "strings"
 
     "github.com/PuerkitoBio/goquery"
-    "github.com/ditashi/jsbeautifier-go/jsbeautifier"
     "golang.org/x/net/html"
 )
 
@@ -39,26 +38,6 @@ var Replacer = strings.NewReplacer(
     `\/`, `/`,
     `\\`, `\`,
 )
-var jsBeautifyOptions = map[string]interface{}{
-    "indent_size":               4,
-    "indent_char":               " ",
-    "indent_with_tabs":          false,
-    "preserve_newlines":         true,
-    "max_preserve_newlines":     10,
-    "space_in_paren":            false,
-    "space_in_empty_paren":      false,
-    "e4x":                       false,
-    "jslint_happy":              false,
-    "space_after_anon_function": false,
-    "brace_style":               "collapse",
-    "keep_array_indentation":    false,
-    "keep_function_indentation": false,
-    "eval_code":                 false,
-    "unescape_strings":          true,
-    "wrap_line_length":          0,
-    "break_chained_methods":     false,
-    "end_with_newline":          false,
-}
 
 func main() {
     var printDone bool
@@ -163,7 +142,7 @@ func filterNewLines(s string) string {
 
 func regexExtract(source string) []string {
     var links []string
-    source, _ = jsbeautifier.Beautify(&source, jsBeautifyOptions)
+    // source, _ = jsbeautifier.Beautify(&source, jsBeautifyOptions)
 
     matches := linkfinderRegex.FindAllStringSubmatch(source, -1)
     for _, match := range matches {
