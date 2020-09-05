@@ -92,7 +92,7 @@ func cleanName(name string) string {
 
 func reverse(s string) string {
     b := make([]byte, len(s))
-    var j int = len(s) - 1
+    var j = len(s) - 1
     for i := 0; i <= j; i++ {
         b[j-i] = s[i]
     }
